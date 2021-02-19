@@ -33,3 +33,6 @@ inc/
 /MANIFEST.bak
 /pm_to_blib
 /*.zip
+
+# source files, NDA covered
+source_files/
