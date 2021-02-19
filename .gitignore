@@ -35,4 +35,6 @@ inc/
 /*.zip
 
 # source files, NDA covered
-source_files/
+source_files/*
+work_dir/termIndex
+
