@@ -27,21 +27,39 @@ open(my $fh, '<:encoding(UTF-8)', $termFile) or die "Could not open file '$termF
 
 my %terms;
 my $lineCounter = 0;
+my $termCounter = 0;
 while (my $row = <$fh>) {
     chomp $row;
-    my ($term) = $row =~ /^@\s(.*)\s=/;
+    my ($term,$syns) = $row =~ /^@\s(.*)\s=(.*)$/;
     # unify term representation
     $term  = lc $term;
-    print "term - $term\r";
+
+ #   print "term - $term\n";
+ #   print "syns - $syns\n";
     if (!$terms{$term}) {
         # no such term was used before
         $terms{$term} = $lineCounter;
-    } else {
-        print "Warning! Term \"$term\" defined in ".$terms{$term}."and in $lineCounter\n";
+        $termCounter++;
+    }
+    my @sarr = split /\s.\s/,$syns;
+    foreach (@sarr) {
+        my ($sentry) = $_ =~ /^[<\s]*([A-Za-z\d\-\s\'\.]*)[\>\s]?$/i;
+        if ($sentry) {
+            $sentry = lc $sentry;
+            if (!$terms{$sentry}) {
+                $terms{$sentry} = $lineCounter;
+                $termCounter++;
+            }
+        } else {
+            print "Cannot parse - >".$_."<\n";
+        }
     }
     $lineCounter++;
 }
-print "*** Total amount of unique terms - $lineCounter\n";
+print "*** Amount of unique terms - $lineCounter\n";
+print "*** Total amount of terms (incl. synonyms) - $termCounter\n";
+
+exit 40;
 
 #
 #   Now we should save this hash array into inddex file
@@ -62,8 +80,10 @@ print "*** Term index saved in working directory\n";
 #
 
 open ($fh,'<:encoding(UTF-8)', $scoreFile) or die "Could not open file '$termFile' $!";
+
 my $cntDirect = 0;
 my $cntAssoc = 0;
+my $totalCnt = 0;
 
 my %scores;
 
@@ -117,17 +137,21 @@ while (my $row = <$fh>) {
 
     $scores{$termName} = \%scoresLocal;
 
-    $cntDirect++;
+    $totalCnt++;
 
-    if ($cntDirect++ > 3) {
-
-        print Dumper(\%scores);
-
-        exit 33;
-    }
+    print "Thesaurus records parsed: $totalCnt\r";
 }
-
 close $fh;
+
+print "\n";
+
+#
+#   Step 3. Create and Fill distance Matrix
+#
+
+
+
+
 
 print "*** Total direct definitions - $cntDirect\n";
 
