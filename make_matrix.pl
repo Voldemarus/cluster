@@ -26,7 +26,7 @@ my $termIndex   =   $workDir."/termIndex";
 open(my $fh, '<:encoding(UTF-8)', $termFile) or die "Could not open file '$termFile' $!";
 
 my %terms;
-my $lineCounter = 0;
+my $lineCounter = 1;        # to look into kids file in a ntural way
 my $termCounter = 0;
 while (my $row = <$fh>) {
     chomp $row;
@@ -34,8 +34,6 @@ while (my $row = <$fh>) {
     # unify term representation
     $term  = lc $term;
 
- #   print "term - $term\n";
- #   print "syns - $syns\n";
     if (!$terms{$term}) {
         # no such term was used before
         $terms{$term} = $lineCounter;
@@ -58,8 +56,6 @@ while (my $row = <$fh>) {
 }
 print "*** Amount of unique terms - $lineCounter\n";
 print "*** Total amount of terms (incl. synonyms) - $termCounter\n";
-
-exit 40;
 
 #
 #   Now we should save this hash array into inddex file
@@ -118,7 +114,7 @@ while (my $row = <$fh>) {
                 @tmpArray  = split /\|/,$content;
                 my %tScore;
                 for (my $j = 0; $j < $tac; $j++) {
-                    my $tName = $ta[$j];
+                    my $tName = lc $ta[$j];
                     my $tSc = $tmpArray[$j];
                    $tScore{$tName} = $tSc;
                 }
@@ -136,8 +132,13 @@ while (my $row = <$fh>) {
  #   print Dumper(\%scoresLocal);
 
     $scores{$termName} = \%scoresLocal;
-
     $totalCnt++;
+
+#    if ($totalCnt > 3) {
+#
+#        print Dumper(\%scores);
+#        last;
+#    }
 
     print "Thesaurus records parsed: $totalCnt\r";
 }
@@ -146,10 +147,36 @@ close $fh;
 print "\n";
 
 #
+# Step 2.1 Merge terms with upper and lower cases
+#
+my %scoreMerged;
+my $entryCount = my @entries = keys %scores;
+for (my $i = 0; $i < $entryCount; $i++) {
+    my $keyToCheck = lc $entries[$i];
+    # find keys which resemble to this key
+    my @matching = ();
+    foreach (@entries) {
+        push(@matching, $_) if /$keyToCheck/i;
+    }
+    # init output score
+    my %buffer = %{$scores{$matching[0]}};
+    my $keyCount = @matching;
+    # and add any additional definitions from "suimilar" definitions
+    if ($keyCount > 1) {
+        for (my $k = 1; $k < $keyCount; $k++) {
+            my %buf2 = %{$scores{$matching[$k]}};
+            %buffer = (%buffer, %buf2);
+        }
+    }
+    $scoreMerged{$keyToCheck} = \%buffer;
+}
+
+#
 #   Step 3. Create and Fill distance Matrix
 #
 
 
+print Dumper(\%scoreMerged);
 
 
 
