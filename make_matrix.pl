@@ -205,8 +205,7 @@ my @distance;
 $uniqueTermsCounter = 100;
 
 #DEBUG FIX ME!
-#my $matrixSize = $uniqueTermsCounter * $uniqueTermsCounter;
-
+my $matrixSize = $uniqueTermsCounter * $uniqueTermsCounter;
 
 print "MatrixSize - $matrixSize\n";
 for (my $i = 0; $i < $matrixSize; $i++) {
