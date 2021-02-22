@@ -10,6 +10,8 @@
 use strict;
 use warnings;
 
+use List::MoreUtils qw(first_index);
+
 use Data::Dumper;
 
 my $workDir     =   "./work_dir";
@@ -19,7 +21,7 @@ my $termFile    =   $srcDir."/kid-friendly-sets.txt";
 my $scoreFile   =   $srcDir."/Human-and-Machine-and-Manual.txt7";
 
 my $termIndex   =   $workDir."/termIndex";
-
+my $distMatrix  =   $workDir."/distanceMatrix";
 
 # Step 1. Create list of terms
 
@@ -54,7 +56,8 @@ while (my $row = <$fh>) {
     }
     $lineCounter++;
 }
-print "*** Amount of unique terms - $lineCounter\n";
+my $uniqueTermsCounter = $lineCounter;
+print "*** Amount of unique terms - $uniqueTermsCounter\n";
 print "*** Total amount of terms (incl. synonyms) - $termCounter\n";
 
 #
@@ -92,10 +95,18 @@ while (my $row = <$fh>) {
     my %scoreList;              # scoreLists for particular parameters
     for (my $i = 0; $i < $fc; $i++) {
         my ($header, $content) = $fields[$i] =~ /^(.*):(.*)$/;
+        if (!$header || !$content) {
+ #          print "!!!!! ".$fields[$i]."\n";
+            next;
+        }
         # parse header
         (my $tmp) = $header =~ /^\#(.*)\[/;
         if ($tmp) {
             $termName = $tmp;
+            if (length($termName) < 3) {
+                # exclude articles etc.
+                next;
+            }
         }
         my $tac = my @tmpArray  = split /\|/,$content;
          # content is a list separated by |
@@ -110,6 +121,7 @@ while (my $row = <$fh>) {
             # look for scores
             ($headerNameTmp) = $header =~ /\[(.*)\-score]/;
             if ($headerNameTmp) {
+                if (ref($scoreList{$headerName}) ne 'ARRAY') { next; }
                 my $tac = my @ta = @{$scoreList{$headerName}};
                 @tmpArray  = split /\|/,$content;
                 my %tScore;
@@ -134,8 +146,7 @@ while (my $row = <$fh>) {
     $scores{$termName} = \%scoresLocal;
     $totalCnt++;
 
-#    if ($totalCnt > 3) {
-#
+#    if ($totalCnt > 1000) {
 #        print Dumper(\%scores);
 #        last;
 #    }
@@ -153,6 +164,12 @@ my %scoreMerged;
 my $entryCount = my @entries = keys %scores;
 for (my $i = 0; $i < $entryCount; $i++) {
     my $keyToCheck = lc $entries[$i];
+    if (length($keyToCheck) < 3) {
+        print "Non valid word - $keyToCheck\n";
+        next;
+    }
+#    print "Key : $keyToCheck\n";
+
     # find keys which resemble to this key
     my @matching = ();
     foreach (@entries) {
@@ -169,25 +186,143 @@ for (my $i = 0; $i < $entryCount; $i++) {
         }
     }
     $scoreMerged{$keyToCheck} = \%buffer;
+#    print "( $i of $entryCount)\n";
 }
+
+# print Dumper(\%scoreMerged);
+
+print "\n*** Total direct definitions - $entryCount\n";
+
 
 #
 #   Step 3. Create and Fill distance Matrix
 #
 
+print "*** Initialising distance Matrix";
 
-print Dumper(\%scoreMerged);
+my @distance;
+
+$uniqueTermsCounter = 100;
+
+#DEBUG FIX ME!
+#my $matrixSize = $uniqueTermsCounter * $uniqueTermsCounter;
 
 
+print "MatrixSize - $matrixSize\n";
+for (my $i = 0; $i < $matrixSize; $i++) {
+     $distance[$i] = 0;
+}
 
-print "*** Total direct definitions - $cntDirect\n";
+print "*** Distance Matrix initialised ($matrixSize elements total).";
 
+# now we making biiiig loop through the whole synsets
+my @keyTerms  = keys %terms;
+for (my $i = 0; $i < $termCounter; $i++) {
+    my $leftTerm = $keyTerms[$i];
+    my $leftIndex = $terms{$leftTerm};
+    for (my $j = 0; $j < $termCounter; $j++) {
+        my $rightTerm = $keyTerms[$j];
+        my $rightIndex = $terms{$rightTerm};
 
+#        print "$i : $leftTerm  $j : $rightTerm ";
+
+        my $matrixOffset = $leftIndex * $uniqueTermsCounter + $rightIndex;
+        if ($leftIndex == $rightIndex) {
+            $distance[$matrixOffset] = 10000;   # diagonal
+#            print "$i : $j -> $leftTerm ($leftIndex) : $rightTerm ($rightIndex) : Diagonal - Score -- 10000\n";
+            next;
+        } else {
+            # try to pick score for direct synset case
+            if (!$scoreMerged{$leftTerm}) {
+#                print "No score for $leftTerm found!  Score -- 0\n";
+                next;
+            }
+            my %leftList = %{$scoreMerged{$leftTerm}};
+            if (%leftList && $leftList{$rightTerm}) {
+                my $addScore = $leftList{$rightTerm};
+                $distance[$matrixOffset] += $addScore;
+                print "(L) Direct $rightTerm found - add: $addScore  total: ".$distance[$matrixOffset]."\n";
+                next;
+            }
+            if (!$scoreMerged{$rightTerm}) {
+#                print "No score for $rightTerm found!  Score -- 0\n";
+                next;
+            }
+            my %rightList = %{$scoreMerged{$rightTerm}};
+            if (%rightList && $rightList{$leftTerm}) {
+                my $addScore = $rightList{$leftTerm};
+                $distance[$matrixOffset] += $addScore;
+                print "(R) Direct $leftTerm found - add: $addScore  total: ".$distance[$matrixOffset]."\n";
+                next;
+            }
+            # case 2 - try to estimate score by comparasion
+            # scores in left and right lists. It requires both
+            # terms should have synset lists
+             if (%leftList && %rightList) {
+                my $lkc = my @keysLeft = keys %leftList;
+                my $rkc = my @keysRight = keys %rightList;
+                my $localScore = 0;
+                 print "Looking for intersect - L($lkc) and R($rkc)\n";
+                # Scan arrays to get intersections
+                 foreach my $rec (@keysRight) {
+                   #  print "       $rec ";
+                     my $ind = first_index { $_ eq $rec } @keysLeft;
+                     if ($ind > -1) {
+                         # found
+ #                        print "$rec found! \n";
+ #                        print "   Left score - ".$leftList{$rec}."\n";
+                         $localScore += $leftList{$rec};
+  #                       print "   Right score - ".$rightList{$rec}."\n";
+                         $localScore += $rightList{$rec};
+ #                        print "   Adjusted local score $localScore\n";
+                     }
+                 }
+                 $distance[$matrixOffset] += $localScore;
+                 print "Indirect score calculated = ".$distance[$matrixOffset]."\n";
+             }
+        }
+    }
+}
+
+print "*** Distance Matrix calculated.\n";
+
+#
+# Storing matric in work-dir
+#
+open($fw, '>:encoding(UTF-8)', $distMatrix) or die "Could not open file '$distMatrix' $!";
+
+print $fw "$uniqueTermsCounter\n";
+
+foreach my $rec (@distance) {
+    print $fw "$rec\n";
+}
+close $fw;
+
+print "*** Distance Matrix saved.\n";
+
+#
+# Estimate score histogram
+#
+
+my %histogram;
+foreach my $rec (@distance) {
+    if (!$histogram{$rec}) {
+        $histogram{$rec} = 1;
+    } else {
+        $histogram{$rec} = $histogram{$rec} + 1;
+    }
+}
+print "\n\n\n";
+#my $karc = my @keke =  sort keys %histogram;
+#print Dumper(\@keke);
+#for (my $i = 0; $i < $karc; $i++) {
+#    my $karr = $keke[$i];
+#    print "$karr :: ",$histogram{$karr}."\n";
+#}
 
 print "\n\n\n";
 
-
-
-
 exit 0;
+
+
 
