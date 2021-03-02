@@ -24,7 +24,12 @@ my $workDir     =   "./work_dir";
 my $srcDir      =   "./source_files";
 
 my $termFile    =   $srcDir."/kid-friendly-sets.txt";
-my $scoreFile   =   $srcDir."/Human-and-Machine-and-Manual.txt7";
+# my $scoreFile   =   $srcDir."/Human-and-Machine-and-Manual.txt7";
+my $scoreFile   =   $srcDir."/test1.txt";
+
+my @themeList = qw(attention policeman risk boiler  posture
+    generator trolley giraffe whistle radiator);
+
 
 my $termIndex   =   $workDir."/termIndex";
 
@@ -45,9 +50,11 @@ while (my $row = <$fh>) {
     my ($term,$syns) = $row =~ /^@\s(.*)\s=(.*)$/;
     # unify term representation
     $term  = lc $term;
-
+    my $found = first_index { $_ eq $term } @themeList;
+    if ($found == -1) { next; }
     if (!$terms{$term}) {
         # no such term was used before
+        # Check for our shortList
         $terms{$term} = $lineCounter;
         $invTerms{$lineCounter} = $term;
         $termCounter++;
@@ -67,7 +74,7 @@ while (my $row = <$fh>) {
     }
     $lineCounter++;
 
-    if ($lineCounter > 30) {
+    if ($lineCounter >= 10) {
         print Dumper(\%invTerms);
         last;
     }
@@ -195,47 +202,112 @@ while ($setCount < $SetCapacity) {
         my @leftList;
         # get list of synonyms for left part
         my $val = $invTerms{$freshPicked};
+        if (!$val) { next; }
         print ">>>>  $freshPicked ->  $val <<<<< \n";
         my $lScoreRec = $scores{$val};
-        if ($lScoreRec) {
-           # and put it into left array to use in comparasion
-          push(@leftList,$lScoreRec);
+         if (!$lScoreRec) {
+            next;
         }
+        my %lh = %{$lScoreRec};
         for ((my $key, my $value) = each %terms) {
             print "$freshPicked / $value  \n";
             if ($key eq $freshPicked) {
                 print "Synonym - $key\n";
                 my $addScoreRec = $scores{$key};
                 if ($addScoreRec) {
-                    push(@leftList, $addScoreRec);
+                    my %rh = %{$addScoreRec};
+                    %lh = (%lh, %rh);
                 }
             }
         }
         # add first entry to output list of terms, will be used later
-        $pickedTerms{$freshPicked} = \@leftList;
+        $pickedTerms{$freshPicked} = \%lh;
         $setCount++;
-        print Dumper(\@leftList);
+ #       print Dumper(\%lh);
         print "Picked term - ".$val." as kernel of new set\n";
+
     } else {
         # This is new term, need to estimate score
-#       my @termsToScore = keys %pickedTerms;
-#       my @leftList;
-#        # get list of synonyms for left part
-#        my $lScoreRec = $scores{$value};
-#        if ($lScoreRec) {
-#             # and put it into left array to use in comparasion
-#             push(@leftList,$lScoreRec);
-#        }
-#        # now @leftList contains all score hashes rlevant to it and synonyms
-#        print Dumper(\@leftList);
-exit 33;
+        my $value = $invTerms{$freshPicked};
+        if (!$value) { next; }  # not included into term list
+        my @currentPicked = keys %pickedTerms;
+        my $justPresent = first_index { $_ eq $value} @currentPicked;
+        if ($justPresent >= 0) { next; }  # this entry just in the list
+        # we are sure, that new term is not included into %pickedTerms
+        # Create structure for new term
+        my @leftList;
+        # get list of synonyms for left part
+        my $lScoreRec = $scores{$value};
+        if (!$lScoreRec) {
+           next;
+        }
+        my %lh = %{$lScoreRec};
+        for ((my $key, my $value) = each %terms) {
+            print "$freshPicked / $value  \n";
+            if ($key eq $freshPicked) {
+                print "Synonym - $key\n";
+                my $addScoreRec = $scores{$key};
+                if ($addScoreRec) {
+                    my %rh = %{$addScoreRec};
+                    %lh = (%lh, %rh);
+                }
+            }
+        }
+         # now @leftList contains all score hashes rlevant to it and synonyms
+        print "New pretendent : $value\n";
+#        print Dumper(\%lh);
+
+        my $llCount = my @llKeys = keys %lh;
+        my $sumScore = 0;
         # now we'll loop through all entries, picked before
-#        for ( my ($key, $value) = each %pickedTerms) {
-#            print "checking against ".$invTerms{$key}."\n";
-#            my @rightList = @{$value};
-#
-#
-#        }
+        for ( my ($key, $value) = each %pickedTerms) {
+            print "checking against ".$invTerms{$key}."\n";
+
+            my $rightTerm = $invTerms{$key};
+            my $directScore = $lh{$rightTerm};
+            if ($directScore) {
+                #
+                # We have direct score precalculated. No need to waste time
+                # for additional checks, just pick up final score
+                #
+                $sumScore = $directScore;
+            } else {
+                #
+                # We should compare scre hashes in left nd right parts
+                #
+                my %rh = %{$value};
+                my $rrCount = my @rrKeys = keys %rh;
+                for my $le (@llKeys) {
+                    my $rs = $rh{$le};
+                    if ($rs) {
+                        # $le is found in both arrays - in left and right
+                        $sumScore += $rs;
+                        $sumScore += $lh{$le};
+                    }
+                 }
+           }
+
+            my %rh = %{$value};
+            my $rrCount = my @rrKeys = keys %rh;
+            foreach my  $leftEntry (@llKeys) {
+                my $rightIndex =
+                my $lScore = $lh{$leftEntry};
+            }
+        }
+        # Now evaluate final score with threshold and make decision
+        if ($sumScore <= $scoreThreshold) {
+            # Yes, this term is distant enought from all previous
+            # Add it to the pickedTerms
+            $pickedTerms{$freshPicked} = \%lh;
+            $tryCounter = 0;
+            $setCount++;
+            print "Term is OK, max score is $sumScore. Added to list\n";
+        } else {
+            print "Term is too close to picked set - score is $sumScore. Looking for next...\n";
+            $tryCounter++;
+        }
+
+        exit 100;
     }
 
 }   # main set filler loop finished
