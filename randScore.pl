@@ -185,18 +185,20 @@ my $setCount = 0;
 my %pickedTerms;
 
 my $freshPicked = -1;
-while ($setCount < $SetCapacity) {
+my $tryCounter = 0;
+while ($setCount < $SetCapacity && $tryCounter < $retryCounter) {
     $freshPicked = -1;
-    my $tryCounter = 0;
-    while ($freshPicked < 0 && ($tryCounter < $retryCounter * ($setCount + 1))) {
+    my $rCounter = 0;
+    while ($freshPicked < 0 && ($rCounter < $retryCounter * ($setCount + 1))) {
         my $picker = int(rand($tCounter));
         if ($pickedTerms{$picker}) {
-            $tryCounter++;
+            $rCounter++;
             next;
         } else {
             $freshPicked = $picker;
         }
     }
+    print "Check 1\n";
     if ($setCount == 0) {
         # create scores entries for this element
         my @leftList;
@@ -206,15 +208,19 @@ while ($setCount < $SetCapacity) {
         print ">>>>  $freshPicked ->  $val <<<<< \n";
         my $lScoreRec = $scores{$val};
          if (!$lScoreRec) {
+            $tryCounter++;
             next;
         }
         my %lh = %{$lScoreRec};
         for ((my $key, my $value) = each %terms) {
+            # key - term
+            # value - cluster (basic term) it belongs to
             print "$freshPicked / $value  \n";
-            if ($key eq $freshPicked) {
-                print "Synonym - $key\n";
+            if ($value eq $freshPicked) {
+                print "Synonym found - $key\n";
                 my $addScoreRec = $scores{$key};
                 if ($addScoreRec) {
+                    # append list of scores to description
                     my %rh = %{$addScoreRec};
                     %lh = (%lh, %rh);
                 }
@@ -225,26 +231,36 @@ while ($setCount < $SetCapacity) {
         $setCount++;
  #       print Dumper(\%lh);
         print "Picked term - ".$val." as kernel of new set\n";
-
+        $tryCounter = 0;
     } else {
-        # This is new term, need to estimate score
+        # This is a new term, need to estimate score in compare with
+        # all previously picked terms
         my $value = $invTerms{$freshPicked};
-        if (!$value) { next; }  # not included into term list
+        if (!$value) {
+            $tryCounter++;
+            next;
+        }  # Sanity check. not found in term list
+        # get list of all terms, picked so far
         my @currentPicked = keys %pickedTerms;
         my $justPresent = first_index { $_ eq $value} @currentPicked;
-        if ($justPresent >= 0) { next; }  # this entry just in the list
-        # we are sure, that new term is not included into %pickedTerms
+        if ($justPresent >= 0) {
+            $tryCounter++;
+            next;
+        }  # this entry was picked before
+        # Now we are sure, that new term is not included into %pickedTerms
         # Create structure for new term
         my @leftList;
         # get list of synonyms for left part
         my $lScoreRec = $scores{$value};
         if (!$lScoreRec) {
-           next;
+            # no description for this term found in scores
+            $tryCounter++;
+            next;
         }
         my %lh = %{$lScoreRec};
         for ((my $key, my $value) = each %terms) {
-            print "$freshPicked / $value  \n";
-            if ($key eq $freshPicked) {
+ #           print "$freshPicked / $value  \n";
+            if ($value eq $freshPicked) {
                 print "Synonym - $key\n";
                 my $addScoreRec = $scores{$key};
                 if ($addScoreRec) {
@@ -253,17 +269,17 @@ while ($setCount < $SetCapacity) {
                 }
             }
         }
-         # now @leftList contains all score hashes rlevant to it and synonyms
-        print "New pretendent : $value\n";
+        # now @leftList contains all score hashes rlevant to it and synonyms
+        print "New pretendent to picked terms : $value\n";
 #        print Dumper(\%lh);
 
         my $llCount = my @llKeys = keys %lh;
         my $sumScore = 0;
+        print "Check 2\n";
         # now we'll loop through all entries, picked before
         for ( my ($key, $value) = each %pickedTerms) {
-            print "checking against ".$invTerms{$key}."\n";
-
             my $rightTerm = $invTerms{$key};
+            print "checking against ".$invTerms{$key}." ($key) \n";
             my $directScore = $lh{$rightTerm};
             if ($directScore) {
                 #
@@ -271,6 +287,7 @@ while ($setCount < $SetCapacity) {
                 # for additional checks, just pick up final score
                 #
                 $sumScore = $directScore;
+                last;
             } else {
                 #
                 # We should compare scre hashes in left nd right parts
@@ -295,6 +312,7 @@ while ($setCount < $SetCapacity) {
             }
         }
         # Now evaluate final score with threshold and make decision
+        print "check 3\n";
         if ($sumScore <= $scoreThreshold) {
             # Yes, this term is distant enought from all previous
             # Add it to the pickedTerms
@@ -306,17 +324,17 @@ while ($setCount < $SetCapacity) {
             print "Term is too close to picked set - score is $sumScore. Looking for next...\n";
             $tryCounter++;
         }
-
-        exit 100;
     }
-
+    print "Check 100\n";
 }   # main set filler loop finished
 
 print "Total amount of terms in output set - $setCount\n";
 
 my @ak = keys %pickedTerms;
 print Dumper(\@ak);
-
+foreach my $kkk (@ak) {
+    print $invTerms{$kkk},"\n";
+}
 
 
 exit 0;
