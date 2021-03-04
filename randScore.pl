@@ -14,10 +14,12 @@ use List::MoreUtils qw(first_index);
 
 use Data::Dumper;
 
-
+# As max score can be 10000 (for example) we need to setup threshold as percent
+# of maximium value
+my $MaxScore        =   10000;
 my $SetCapacity      =   80;         # Amount of low correlated terms in the set
-my $retryCounter     =   20;         # amount of false retries
-my $scoreThreshold   =   0.004;      # maximum similarity for two terms
+my $retryCounter     =   20;  # amount of false retries
+my $scoreThreshold   =   0.004*$MaxScore; # maximum similarity for two terms
 
 
 my $workDir     =   "./work_dir";
@@ -198,7 +200,6 @@ while ($setCount < $SetCapacity && $tryCounter < $retryCounter) {
             $freshPicked = $picker;
         }
     }
-    print "Check 1\n";
     if ($setCount == 0) {
         # create scores entries for this element
         my @leftList;
@@ -208,16 +209,15 @@ while ($setCount < $SetCapacity && $tryCounter < $retryCounter) {
         print ">>>>  $freshPicked ->  $val <<<<< \n";
         my $lScoreRec = $scores{$val};
          if (!$lScoreRec) {
-            $tryCounter++;
+            $rCounter++;
             next;
         }
         my %lh = %{$lScoreRec};
-        for ((my $key, my $value) = each %terms) {
+        foreach my $key  (keys %terms) {
             # key - term
+            my $value = $terms{$key};
             # value - cluster (basic term) it belongs to
-            print "$freshPicked / $value  \n";
-            if ($value eq $freshPicked) {
-                print "Synonym found - $key\n";
+             if ($value eq $freshPicked) {
                 my $addScoreRec = $scores{$key};
                 if ($addScoreRec) {
                     # append list of scores to description
@@ -258,10 +258,10 @@ while ($setCount < $SetCapacity && $tryCounter < $retryCounter) {
             next;
         }
         my %lh = %{$lScoreRec};
-        for ((my $key, my $value) = each %terms) {
+        foreach my $key (keys %terms) {
+            my $value = $terms{$key};
  #           print "$freshPicked / $value  \n";
             if ($value eq $freshPicked) {
-                print "Synonym - $key\n";
                 my $addScoreRec = $scores{$key};
                 if ($addScoreRec) {
                     my %rh = %{$addScoreRec};
@@ -275,9 +275,9 @@ while ($setCount < $SetCapacity && $tryCounter < $retryCounter) {
 
         my $llCount = my @llKeys = keys %lh;
         my $sumScore = 0;
-        print "Check 2\n";
         # now we'll loop through all entries, picked before
-        for ( my ($key, $value) = each %pickedTerms) {
+        foreach  my $key (keys %pickedTerms) {
+            my $value = $pickedTerms{$key};
             my $rightTerm = $invTerms{$key};
             print "checking against ".$invTerms{$key}." ($key) \n";
             my $directScore = $lh{$rightTerm};
@@ -286,6 +286,7 @@ while ($setCount < $SetCapacity && $tryCounter < $retryCounter) {
                 # We have direct score precalculated. No need to waste time
                 # for additional checks, just pick up final score
                 #
+                print "Direct score = $directScore\n";
                 $sumScore = $directScore;
                 last;
             } else {
@@ -297,22 +298,19 @@ while ($setCount < $SetCapacity && $tryCounter < $retryCounter) {
                 for my $le (@llKeys) {
                     my $rs = $rh{$le};
                     if ($rs) {
-                        # $le is found in both arrays - in left and right
+                        # $le can be found in both arrays - in left and right but values can be differentl 309
+ #                       print "  Term $le found! Left score : $rs";
                         $sumScore += $rs;
-                        $sumScore += $lh{$le};
+                        if ($lh{$le}) {
+ #                           print " Right score : ".$lh{$le};
+                            $sumScore += $lh{$le};
+                        }
+ #                       print "\n";
                     }
                  }
            }
-
-            my %rh = %{$value};
-            my $rrCount = my @rrKeys = keys %rh;
-            foreach my  $leftEntry (@llKeys) {
-                my $rightIndex =
-                my $lScore = $lh{$leftEntry};
-            }
         }
         # Now evaluate final score with threshold and make decision
-        print "check 3\n";
         if ($sumScore <= $scoreThreshold) {
             # Yes, this term is distant enought from all previous
             # Add it to the pickedTerms
@@ -325,8 +323,7 @@ while ($setCount < $SetCapacity && $tryCounter < $retryCounter) {
             $tryCounter++;
         }
     }
-    print "Check 100\n";
-}   # main set filler loop finished
+ }   # main set filler loop finished
 
 print "Total amount of terms in output set - $setCount\n";
 
