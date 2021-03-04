@@ -18,8 +18,8 @@ use Data::Dumper;
 # of maximium value
 my $MaxScore        =   10000;
 my $SetCapacity      =   80;         # Amount of low correlated terms in the set
-my $retryCounter     =   20;  # amount of false retries
-my $scoreThreshold   =   0.004*$MaxScore; # maximum similarity for two terms
+my $retryCounter     =   120;  # amount of false retries
+my $scoreThreshold   =   0.1*$MaxScore; # maximum similarity for two terms
 
 
 my $workDir     =   "./work_dir";
@@ -185,7 +185,7 @@ my $tCounter = @termArray;
 
 my $setCount = 0;
 my %pickedTerms;
-
+my @rejectedTerms;
 my $freshPicked = -1;
 my $tryCounter = 0;
 while ($setCount < $SetCapacity && $tryCounter < $retryCounter) {
@@ -197,7 +197,14 @@ while ($setCount < $SetCapacity && $tryCounter < $retryCounter) {
             $rCounter++;
             next;
         } else {
-            $freshPicked = $picker;
+            my $justRejected = first_index { $_ eq $picker} @rejectedTerms;
+            if ($justRejected >= 0) {
+                $rCounter++;
+                $freshPicked = -1;
+            } else {
+                $freshPicked = $picker;
+                $rCounter = 0;
+            }
         }
     }
     if ($setCount == 0) {
@@ -291,8 +298,9 @@ while ($setCount < $SetCapacity && $tryCounter < $retryCounter) {
                 last;
             } else {
                 #
-                # We should compare scre hashes in left nd right parts
+                # We should compare hashes in left nd right parts
                 #
+ #               print "\n\n\n";
                 my %rh = %{$value};
                 my $rrCount = my @rrKeys = keys %rh;
                 for my $le (@llKeys) {
@@ -302,12 +310,13 @@ while ($setCount < $SetCapacity && $tryCounter < $retryCounter) {
  #                       print "  Term $le found! Left score : $rs";
                         $sumScore += $rs;
                         if ($lh{$le}) {
- #                           print " Right score : ".$lh{$le};
+#                            print " Right score : ".$lh{$le};
                             $sumScore += $lh{$le};
                         }
  #                       print "\n";
                     }
                  }
+ #               print "\n\n";
            }
         }
         # Now evaluate final score with threshold and make decision
@@ -320,9 +329,11 @@ while ($setCount < $SetCapacity && $tryCounter < $retryCounter) {
             print "Term is OK, max score is $sumScore. Added to list\n";
         } else {
             print "Term is too close to picked set - score is $sumScore. Looking for next...\n";
+            push(@rejectedTerms,$freshPicked);
             $tryCounter++;
         }
     }
+ #   print "TryCounter - $tryCounter\n";
  }   # main set filler loop finished
 
 print "Total amount of terms in output set - $setCount\n";
