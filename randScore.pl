@@ -18,19 +18,24 @@ use Data::Dumper;
 # of maximium value
 my $MaxScore        =   10000;
 my $SetCapacity      =   80;         # Amount of low correlated terms in the set
-my $retryCounter     =   120;  # amount of false retries
-my $scoreThreshold   =   0.1*$MaxScore; # maximum similarity for two terms
+my $retryCounter     =   120;              # amount of false retries
+my $scoreThreshold   =   0.05 * $MaxScore; # maximum similarity for two terms
 
 
 my $workDir     =   "./work_dir";
 my $srcDir      =   "./source_files";
 
-my $termFile    =   $srcDir."/kid-friendly-sets.txt";
-# my $scoreFile   =   $srcDir."/Human-and-Machine-and-Manual.txt7";
-my $scoreFile   =   $srcDir."/test1.txt";
 
-my @themeList = qw(attention policeman risk boiler  posture
-    generator trolley giraffe whistle radiator);
+my $termFile    =   $srcDir."/kid-friendly-sets.txt";
+my $scoreFile   =   $srcDir."/Human-and-Machine-and-Manual.txt7";
+# Debug set
+# my $scoreFile   =   $srcDir."/test1.txt";
+
+my $outputFile = $workDir."/resultSet.txt";
+
+# Used in test run only
+#my @themeList = qw(attention policeman risk boiler  posture
+#    generator trolley giraffe whistle radiator);
 
 
 my $termIndex   =   $workDir."/termIndex";
@@ -52,8 +57,9 @@ while (my $row = <$fh>) {
     my ($term,$syns) = $row =~ /^@\s(.*)\s=(.*)$/;
     # unify term representation
     $term  = lc $term;
-    my $found = first_index { $_ eq $term } @themeList;
-    if ($found == -1) { next; }
+    # Uncomment next two lines to limit search for a test set
+#    my $found = first_index { $_ eq $term } @themeList;
+#    if ($found == -1) { next; }
     if (!$terms{$term}) {
         # no such term was used before
         # Check for our shortList
@@ -76,10 +82,10 @@ while (my $row = <$fh>) {
     }
     $lineCounter++;
 
-    if ($lineCounter >= 10) {
-        print Dumper(\%invTerms);
-        last;
-    }
+#    if ($lineCounter >= 10) {
+#        print Dumper(\%invTerms);
+#        last;
+#    }
 }
 my $uniqueTermsCounter = $lineCounter;
 print "*** Amount of unique terms - $uniqueTermsCounter\n";
@@ -171,10 +177,10 @@ while (my $row = <$fh>) {
     $scores{$termName} = \%scoresLocal;
     $totalCnt++;
 
-    if ($totalCnt > 50000) {
+#    if ($totalCnt > 50000) {
 #        print Dumper(\%scores);
-        last;
-    }
+#        last;
+#    }
 
     print "Thesaurus records parsed: $totalCnt\r";
 }
@@ -213,7 +219,7 @@ while ($setCount < $SetCapacity && $tryCounter < $retryCounter) {
         # get list of synonyms for left part
         my $val = $invTerms{$freshPicked};
         if (!$val) { next; }
-        print ">>>>  $freshPicked ->  $val <<<<< \n";
+#        print ">>>>  $freshPicked ->  $val <<<<< \n";
         my $lScoreRec = $scores{$val};
          if (!$lScoreRec) {
             $rCounter++;
@@ -339,11 +345,15 @@ while ($setCount < $SetCapacity && $tryCounter < $retryCounter) {
 print "Total amount of terms in output set - $setCount\n";
 
 my @ak = keys %pickedTerms;
-print Dumper(\@ak);
+# print Dumper(\@ak);
+
+open ($fh,'>:encoding(UTF-8)', $outputFile) or die "Could not open file '$outputFile' $!";
+
 foreach my $kkk (@ak) {
     print $invTerms{$kkk},"\n";
+    print $fh $termArray[$kkk]."\n";
 }
-
+close $fh;
 
 exit 0;
 
