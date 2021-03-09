@@ -16,8 +16,9 @@ use Data::Dumper;
 
 # As max score can be 10000 (for example) we need to setup threshold as percent
 # of maximium value
-my $MaxScore        =   10000;
-my $SetCapacity      =   80;         # Amount of low correlated terms in the set
+my $MaxScore         =   10000;
+my $SetAmount        =   100;         # Amount of groups/sets
+my $SetCapacity      =   20;         # Amount of low correlated terms in the set
 my $retryCounter     =   120;              # amount of false retries
 my $scoreThreshold   =   0.05 * $MaxScore; # maximum similarity for two terms
 
@@ -32,6 +33,7 @@ my $scoreFile   =   $srcDir."/Human-and-Machine-and-Manual.txt7";
 # my $scoreFile   =   $srcDir."/test1.txt";
 
 my $outputFile = $workDir."/resultSet.txt";
+open (my $ofh,'>:encoding(UTF-8)', $outputFile) or die "Could not open file '$outputFile' $!";
 
 # Used in test run only
 #my @themeList = qw(attention policeman risk boiler  posture
@@ -194,165 +196,165 @@ my %pickedTerms;
 my @rejectedTerms;
 my $freshPicked = -1;
 my $tryCounter = 0;
-while ($setCount < $SetCapacity && $tryCounter < $retryCounter) {
-    $freshPicked = -1;
-    my $rCounter = 0;
-    while ($freshPicked < 0 && ($rCounter < $retryCounter * ($setCount + 1))) {
-        my $picker = int(rand($tCounter));
-        if ($pickedTerms{$picker}) {
-            $rCounter++;
-            next;
-        } else {
-            my $justRejected = first_index { $_ eq $picker} @rejectedTerms;
-            if ($justRejected >= 0) {
+
+my $setCounter = 0;
+
+while ($setCounter < $SetAmount && $tryCounter < $retryCounter) {
+
+    while ($setCount < $SetCapacity && $tryCounter < $retryCounter) {
+        $freshPicked = -1;
+        my $rCounter = 0;
+        while ($freshPicked < 0 && ($rCounter < $retryCounter * ($setCount + 1))) {
+            my $picker = int(rand($tCounter));
+            if ($pickedTerms{$picker}) {
                 $rCounter++;
-                $freshPicked = -1;
+                next;
             } else {
-                $freshPicked = $picker;
-                $rCounter = 0;
-            }
-        }
-    }
-    if ($setCount == 0) {
-        # create scores entries for this element
-        my @leftList;
-        # get list of synonyms for left part
-        my $val = $invTerms{$freshPicked};
-        if (!$val) { next; }
-#        print ">>>>  $freshPicked ->  $val <<<<< \n";
-        my $lScoreRec = $scores{$val};
-         if (!$lScoreRec) {
-            $rCounter++;
-            next;
-        }
-        my %lh = %{$lScoreRec};
-        foreach my $key  (keys %terms) {
-            # key - term
-            my $value = $terms{$key};
-            # value - cluster (basic term) it belongs to
-             if ($value eq $freshPicked) {
-                my $addScoreRec = $scores{$key};
-                if ($addScoreRec) {
-                    # append list of scores to description
-                    my %rh = %{$addScoreRec};
-                    %lh = (%lh, %rh);
+                my $justRejected = first_index { $_ eq $picker} @rejectedTerms;
+                if ($justRejected >= 0) {
+                    $rCounter++;
+                    $freshPicked = -1;
+                } else {
+                    $freshPicked = $picker;
+                    $rCounter = 0;
                 }
             }
         }
-        # add first entry to output list of terms, will be used later
-        $pickedTerms{$freshPicked} = \%lh;
-        $setCount++;
- #       print Dumper(\%lh);
-        print "Picked term - ".$val." as kernel of new set\n";
-        $tryCounter = 0;
-    } else {
-        # This is a new term, need to estimate score in compare with
-        # all previously picked terms
-        my $value = $invTerms{$freshPicked};
-        if (!$value) {
-            $tryCounter++;
-            next;
-        }  # Sanity check. not found in term list
-        # get list of all terms, picked so far
-        my @currentPicked = keys %pickedTerms;
-        my $justPresent = first_index { $_ eq $value} @currentPicked;
-        if ($justPresent >= 0) {
-            $tryCounter++;
-            next;
-        }  # this entry was picked before
-        # Now we are sure, that new term is not included into %pickedTerms
-        # Create structure for new term
-        my @leftList;
-        # get list of synonyms for left part
-        my $lScoreRec = $scores{$value};
-        if (!$lScoreRec) {
-            # no description for this term found in scores
-            $tryCounter++;
-            next;
-        }
-        my %lh = %{$lScoreRec};
-        foreach my $key (keys %terms) {
-            my $value = $terms{$key};
- #           print "$freshPicked / $value  \n";
-            if ($value eq $freshPicked) {
-                my $addScoreRec = $scores{$key};
-                if ($addScoreRec) {
-                    my %rh = %{$addScoreRec};
-                    %lh = (%lh, %rh);
-                }
+        if ($setCount == 0) {
+            # create scores entries for this element
+            my @leftList;
+            # get list of synonyms for left part
+            my $val = $invTerms{$freshPicked};
+            if (!$val) { next; }
+            #        print ">>>>  $freshPicked ->  $val <<<<< \n";
+            my $lScoreRec = $scores{$val};
+            if (!$lScoreRec) {
+                $rCounter++;
+                next;
             }
-        }
-        # now @leftList contains all score hashes rlevant to it and synonyms
-        print "New pretendent to picked terms : $value\n";
-#        print Dumper(\%lh);
-
-        my $llCount = my @llKeys = keys %lh;
-        my $sumScore = 0;
-        # now we'll loop through all entries, picked before
-        foreach  my $key (keys %pickedTerms) {
-            my $value = $pickedTerms{$key};
-            my $rightTerm = $invTerms{$key};
-            print "checking against ".$invTerms{$key}." ($key) \n";
-            my $directScore = $lh{$rightTerm};
-            if ($directScore) {
-                #
-                # We have direct score precalculated. No need to waste time
-                # for additional checks, just pick up final score
-                #
-                print "Direct score = $directScore\n";
-                $sumScore = $directScore;
-                last;
-            } else {
-                #
-                # We should compare hashes in left nd right parts
-                #
- #               print "\n\n\n";
-                my %rh = %{$value};
-                my $rrCount = my @rrKeys = keys %rh;
-                for my $le (@llKeys) {
-                    my $rs = $rh{$le};
-                    if ($rs) {
-                        # $le can be found in both arrays - in left and right but values can be differentl 309
- #                       print "  Term $le found! Left score : $rs";
-                        $sumScore += $rs;
-                        if ($lh{$le}) {
-#                            print " Right score : ".$lh{$le};
-                            $sumScore += $lh{$le};
-                        }
- #                       print "\n";
+            my %lh = %{$lScoreRec};
+            foreach my $key  (keys %terms) {
+                # key - term
+                my $value = $terms{$key};
+                # value - cluster (basic term) it belongs to
+                if ($value eq $freshPicked) {
+                    my $addScoreRec = $scores{$key};
+                    if ($addScoreRec) {
+                        # append list of scores to description
+                        my %rh = %{$addScoreRec};
+                        %lh = (%lh, %rh);
                     }
-                 }
- #               print "\n\n";
-           }
-        }
-        # Now evaluate final score with threshold and make decision
-        if ($sumScore <= $scoreThreshold) {
-            # Yes, this term is distant enought from all previous
-            # Add it to the pickedTerms
+                }
+            }
+            # add first entry to output list of terms, will be used later
             $pickedTerms{$freshPicked} = \%lh;
-            $tryCounter = 0;
             $setCount++;
-            print "Term is OK, max score is $sumScore. Added to list\n";
+            #       print Dumper(\%lh);
+            print "Picked term - ".$val." as kernel of new set\n";
+            $tryCounter = 0;
         } else {
-            print "Term is too close to picked set - score is $sumScore. Looking for next...\n";
-            push(@rejectedTerms,$freshPicked);
-            $tryCounter++;
+            # This is a new term, need to estimate score in compare with
+            # all previously picked terms
+            my $value = $invTerms{$freshPicked};
+            if (!$value) {
+                $tryCounter++;
+                next;
+            }  # Sanity check. not found in term list
+            # get list of all terms, picked so far
+            my @currentPicked = keys %pickedTerms;
+            my $justPresent = first_index { $_ eq $value} @currentPicked;
+            if ($justPresent >= 0) {
+                $tryCounter++;
+                next;
+            }  # this entry was picked before
+            # Now we are sure, that new term is not included into %pickedTerms
+            # Create structure for new term
+            my @leftList;
+            # get list of synonyms for left part
+            my $lScoreRec = $scores{$value};
+            if (!$lScoreRec) {
+                # no description for this term found in scores
+                $tryCounter++;
+                next;
+            }
+            my %lh = %{$lScoreRec};
+            foreach my $key (keys %terms) {
+                my $value = $terms{$key};
+                #           print "$freshPicked / $value  \n";
+                if ($value eq $freshPicked) {
+                    my $addScoreRec = $scores{$key};
+                    if ($addScoreRec) {
+                        my %rh = %{$addScoreRec};
+                        %lh = (%lh, %rh);
+                    }
+                }
+            }
+            # now @leftList contains all score hashes rlevant to it and synonyms
+            print "New pretendent to picked terms : $value\n";
+            my $llCount = my @llKeys = keys %lh;
+            my $sumScore = 0;
+            # now we'll loop through all entries, picked before
+            foreach  my $key (keys %pickedTerms) {
+                my $value = $pickedTerms{$key};
+                my $rightTerm = $invTerms{$key};
+                print "checking against ".$invTerms{$key}." ($key) \n";
+                my $directScore = $lh{$rightTerm};
+                if ($directScore) {
+                    #
+                    # We have direct score precalculated. No need to waste time
+                    # for additional checks, just pick up final score
+                    #
+                    print "Direct score = $directScore\n";
+                    $sumScore = $directScore;
+                    last;
+                } else {
+                    #
+                    # We should compare hashes in left nd right parts
+                    #
+                    my %rh = %{$value};
+                    my $rrCount = my @rrKeys = keys %rh;
+                    for my $le (@llKeys) {
+                        my $rs = $rh{$le};
+                        if ($rs) {
+                            # $le can be found in both arrays - in left and right but values can be differentl 309
+                           $sumScore += $rs;
+                            if ($lh{$le}) {
+                                $sumScore += $lh{$le};
+                            }
+                        }
+                    }
+                }
+            }
+            # Now evaluate final score with threshold and make decision
+            if ($sumScore <= $scoreThreshold) {
+                # Yes, this term is distant enought from all previous
+                # Add it to the pickedTerms
+                $pickedTerms{$freshPicked} = \%lh;
+                $tryCounter = 0;
+                $setCount++;
+                print "Term is OK, max score is $sumScore. Added to list\n";
+            } else {
+                print "Term is too close to picked set - score is $sumScore. Looking for next...\n";
+                push(@rejectedTerms,$freshPicked);
+                $tryCounter++;
+            }
         }
+    }   # main set filler loop finished
+
+    print "Total amount of terms in output set - $setCount\n";
+    my @ak = keys %pickedTerms;
+    # print Dumper(\@ak);
+
+    foreach my $kkk (@ak) {
+        print $invTerms{$kkk},"\n";
+        print $ofh $termArray[$kkk]."\n";
     }
- #   print "TryCounter - $tryCounter\n";
- }   # main set filler loop finished
+    print $ofh "--------------------------------\n";
 
-print "Total amount of terms in output set - $setCount\n";
-
-my @ak = keys %pickedTerms;
-# print Dumper(\@ak);
-
-open ($fh,'>:encoding(UTF-8)', $outputFile) or die "Could not open file '$outputFile' $!";
-
-foreach my $kkk (@ak) {
-    print $invTerms{$kkk},"\n";
-    print $fh $termArray[$kkk]."\n";
+    $setCounter++;
 }
+
+
 close $fh;
 
 exit 0;
