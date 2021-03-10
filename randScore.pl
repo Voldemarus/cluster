@@ -17,9 +17,9 @@ use Data::Dumper;
 # As max score can be 10000 (for example) we need to setup threshold as percent
 # of maximium value
 my $MaxScore         =   10000;
-my $SetAmount        =   100;         # Amount of groups/sets
+my $SetAmount        =   100;        # Amount of groups/sets
 my $SetCapacity      =   20;         # Amount of low correlated terms in the set
-my $retryCounter     =   120;              # amount of false retries
+my $retryCounter     =   800;        # amount of false retries
 my $scoreThreshold   =   0.05 * $MaxScore; # maximum similarity for two terms
 
 
@@ -188,19 +188,18 @@ while (my $row = <$fh>) {
 }
 close $fh;
 
-
 my $tCounter = @termArray;
-
-my $setCount = 0;
-my %pickedTerms;
-my @rejectedTerms;
-my $freshPicked = -1;
+my @justUsedTerms = ();
 my $tryCounter = 0;
-
 my $setCounter = 0;
 
-while ($setCounter < $SetAmount && $tryCounter < $retryCounter) {
 
+while ($setCounter < $SetAmount && $tryCounter < $retryCounter) {
+    # reset array of rejected terms
+    my @rejectedTerms = ();
+    my $freshPicked = -1;
+    my $setCount = 0;
+    my %pickedTerms;
     while ($setCount < $SetCapacity && $tryCounter < $retryCounter) {
         $freshPicked = -1;
         my $rCounter = 0;
@@ -210,15 +209,21 @@ while ($setCounter < $SetAmount && $tryCounter < $retryCounter) {
                 $rCounter++;
                 next;
             } else {
-                my $justRejected = first_index { $_ eq $picker} @rejectedTerms;
-                if ($justRejected >= 0) {
+                my $used = first_index { $_ eq $picker} @justUsedTerms;
+                if ($used >= 0) {
                     $rCounter++;
                     $freshPicked = -1;
                 } else {
-                    $freshPicked = $picker;
-                    $rCounter = 0;
+                    my $justRejected = first_index { $_ eq $picker} @rejectedTerms;
+                    if ($justRejected >= 0) {
+                        $rCounter++;
+                        $freshPicked = -1;
+                    } else {
+                        $freshPicked = $picker;
+                        $rCounter = 0;
+                    }
                 }
-            }
+             }
         }
         if ($setCount == 0) {
             # create scores entries for this element
@@ -346,7 +351,9 @@ while ($setCounter < $SetAmount && $tryCounter < $retryCounter) {
     # print Dumper(\@ak);
 
     foreach my $kkk (@ak) {
-        print $invTerms{$kkk},"\n";
+        my $pTerm =  $invTerms{$kkk};
+        print $pTerm,"\n";
+        push(@justUsedTerms, $kkk);
         print $ofh $termArray[$kkk]."\n";
     }
     print $ofh "--------------------------------\n";
