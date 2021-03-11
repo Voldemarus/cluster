@@ -1,11 +1,19 @@
 #!/usr/bin/perl
 #
-#   Distance matrix generator
+#   Picker for nonoverlaped sets of terms, based on random search
 #
-#   Will create matrix file in working directory
-#   Should be called once for each termFile and scoreFile
+#  Script analyzes term file and score file and generated text file, which contains groups of
+#  terms, with similarity score less than given. It is possible that similar terms are found
+#  in different gorups.
 #
-#   ./make_matrix.pl
+#   Use
+#
+#   ./randomScore.pl --help
+#
+#   to get list of optons
+#
+#   Author: Vladimir Vodolaxkiy, <vloldearus@gmail.com>
+#
 
 use strict;
 use warnings;
